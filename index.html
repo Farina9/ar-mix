@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>مدیریت ۵ کتگوری تارگت‌های AR</title>
+    
+    <script src="./libs/aframe.min.js"></script>
+    <script src="./libs/mindar-image-aframe.prod.js"></script>
+
+    <style>
+      body { margin: 0; overflow: hidden; font-family: Tahoma, sans-serif; }
+      #startBtn {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        z-index: 999; padding: 14px 28px; background: #0284c7; color: #fff;
+        border: none; border-radius: 8px; font-size: 16px; cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      }
+    </style>
+
+    <script>
+      // کامپوننت لمس و چرخش سه‌بعدی (همگام با انیمیشن)
+      AFRAME.registerComponent('drag-rotate', {
+        init: function () {
+          this.isDragging = false;
+          this.prevPos = { x: 0, y: 0 };
+
+          const onStart = (e) => {
+            this.isDragging = true;
+            this.prevPos = {
+              x: e.touches ? e.touches[0].clientX : e.clientX,
+              y: e.touches ? e.touches[0].clientY : e.clientY
+            };
+            if (this.el.hasAttribute('animation')) {
+              this.el.components.animation.pauseAnimation();
+            }
+          };
+
+          const onMove = (e) => {
+            if (!this.isDragging) return;
+            const x = e.touches ? e.touches[0].clientX : e.clientX;
+            const y = e.touches ? e.touches[0].clientY : e.clientY;
+            const deltaX = x - this.prevPos.x;
+            const deltaY = y - this.prevPos.y;
+
+            const rot = this.el.getAttribute('rotation') || { x: 0, y: 0, z: 0 };
+            this.el.setAttribute('rotation', {
+              x: rot.x - deltaY * 0.4,
+              y: rot.y + deltaX * 0.4,
+              z: rot.z
+            });
+            this.prevPos = { x, y };
+          };
+
+          const onEnd = () => {
+            if (this.isDragging && this.el.hasAttribute('animation')) {
+              this.el.components.animation.resumeAnimation();
+            }
+            this.isDragging = false;
+          };
+
+          this.el.addEventListener('mousedown', onStart);
+          this.el.addEventListener('touchstart', onStart, { passive: true });
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('touchmove', onMove, { passive: true });
+          window.addEventListener('mouseup', onEnd);
+          window.addEventListener('touchend', onEnd);
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <button id="startBtn">شروع و فعال‌سازی رسانه‌ها</button>
+
+    <a-scene id="ar-scene" 
+      mindar-image="imageTargetSrc: ./assets/targets.mind; maxTrack: 1;" 
+      vr-mode-ui="enabled: false"
+      cursor="rayOrigin: mouse" 
+      raycaster="objects: .clickable">
+      
+      <a-assets id="assets-box">
+        <!-- کاور پیش‌فرض برای صوت‌ها در صورت مشخص نکردن کاور -->
+        <img id="default-audio-icon" src="./assets/audio-icon.png">
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    </a-scene>
+
+    <script>
+      // =========================================================================
+      // ۱. مقادیر پیش‌فرض کلی هر کتگوری
+      // =========================================================================
+      const DEFAULTS = {
+        model: { scale: '0.1 0.1 0.1',  pos: '0 0 0.1',  autoRotate: true, touch: true },
+        video: { scale: '1 0.56 1',     pos: '0 0 0.05' },
+        audio: { scale: '0.6 0.6 1',    pos: '0 0 0.05' },
+        image: { scale: '1 1.4 1',      pos: '0 0 0.05' },
+        link:  { scale: '1 0.35 1',     pos: '0 -0.4 0.05', defaultIcon: './assets/btn-link.png' }
+      };
+
+      // =========================================================================
+      // ۲. تفکیک ۵ کتگوری تارگت‌ها
+      // =========================================================================
+
+      // ۱. مدل‌های سه‌بعدی: [شماره, مسیر فایل, اسکیل, پوزیشن, چرخش خودکار, تاچ]
+      const modelTargets = [
+        [1, './assets/model1.glb', '0.15 0.15 0.15', '0 0 0.1', false, true] // بدون چرخش خودکار، فقط تاچ
+      ];
+
+      // ۲. ویدئوها: [شماره, مسیر فایل, اسکیل, پوزیشن]
+      const videoTargets = [
+        [2, './assets/video1.mp4', '1.2 0.68 1', '0 0 0.05']
+      ];
+
+
+      // =========================================================================
+      // ۳. موتور پردازش خودکار برای هر کتگوری
+      // =========================================================================
+      const scene = document.querySelector('#ar-scene');
+      const assets = document.querySelector('#assets-box');
+
+      function createTargetEntity(id) {
+        const target = document.createElement('a-entity');
+        target.setAttribute('mindar-image-target', `targetIndex: ${id}`);
+        scene.appendChild(target);
+        return target;
+      }
+
+      // پردازش ۱: مدل‌ها
+      modelTargets.forEach(([id, file, scale, pos, autoRot, touch]) => {
+        const tagId = `model-${id}`;
+        assets.insertAdjacentHTML('beforeend', `<a-asset-item id="${tagId}" src="${file}"></a-asset-item>`);
+
+        const target = createTargetEntity(id);
+        const el = document.createElement('a-gltf-model');
+        el.setAttribute('src', `#${tagId}`);
+        el.setAttribute('scale', scale || DEFAULTS.model.scale);
+        el.setAttribute('position', pos || DEFAULTS.model.pos);
+        el.setAttribute('rotation', '0 0 0');
+
+        const canAuto = autoRot !== undefined ? autoRot : DEFAULTS.model.autoRotate;
+        const canTouch = touch !== undefined ? touch : DEFAULTS.model.touch;
+
+        if (canAuto) el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 9000; easing: linear');
+        if (canTouch) {
+          el.classList.add('clickable');
+          el.setAttribute('drag-rotate', '');
+        }
+        target.appendChild(el);
+      });
+
+      // پردازش ۲: ویدئوها
+      videoTargets.forEach(([id, file, scale, pos]) => {
+        const tagId = `video-${id}`;
+        assets.insertAdjacentHTML('beforeend', `<video id="${tagId}" src="${file}" preload="auto" loop playsinline webkit-playsinline></video>`);
+
+        const target = createTargetEntity(id);
+        const el = document.createElement('a-video');
+        el.setAttribute('src', `#${tagId}`);
+        el.setAttribute('scale', scale || DEFAULTS.video.scale);
+        el.setAttribute('position', pos || DEFAULTS.video.pos);
+
+        target.addEventListener('targetFound', () => { const v = document.querySelector(`#${tagId}`); if (v) v.play(); });
+        target.addEventListener('targetLost', () => { const v = document.querySelector(`#${tagId}`); if (v) v.pause(); });
+        target.appendChild(el);
+      });
+
+      // پردازش ۳: صوت‌ها
+      audioTargets.forEach(([id, file, cover]) => {
+        const tagId = `audio-${id}`;
+        assets.insertAdjacentHTML('beforeend', `<audio id="${tagId}" src="${file}" preload="auto"></audio>`);
+
+        const target = createTargetEntity(id);
+        const el = document.createElement('a-image');
+        el.setAttribute('src', cover || '#default-audio-icon');
+        el.setAttribute('scale', DEFAULTS.audio.scale);
+        el.setAttribute('position', DEFAULTS.audio.pos);
+        el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear');
+
+        target.addEventListener('targetFound', () => { const a = document.querySelector(`#${tagId}`); if (a) a.play(); });
+        target.addEventListener('targetLost', () => { const a = document.querySelector(`#${tagId}`); if (a) a.pause(); });
+        target.appendChild(el);
+      });
+
+      // پردازش ۴: تصاویر
+      imageTargets.forEach(([id, file, scale, pos]) => {
+        const tagId = `img-${id}`;
+        assets.insertAdjacentHTML('beforeend', `<img id="${tagId}" src="${file}">`);
+
+        const target = createTargetEntity(id);
+        const el = document.createElement('a-image');
+        el.setAttribute('src', `#${tagId}`);
+        el.setAttribute('scale', scale || DEFAULTS.image.scale);
+        el.setAttribute('position', pos || DEFAULTS.image.pos);
+        target.appendChild(el);
+      });
+
+      // پردازش ۵: لینک‌ها (دکمه قابل کلیک)
+      linkTargets.forEach(([id, url, btnImg, scale, pos]) => {
+        const target = createTargetEntity(id);
+        const el = document.createElement('a-image');
+        el.setAttribute('src', btnImg || DEFAULTS.link.defaultIcon);
+        el.setAttribute('scale', scale || DEFAULTS.link.scale);
+        el.setAttribute('position', pos || DEFAULTS.link.pos);
+        el.classList.add('clickable');
+
+        // باز شدن لینک در تب جدید با لمس دکمه
+        el.addEventListener('click', () => {
+          window.open(url, '_blank');
+        });
+
+        target.appendChild(el);
+      });
+
+      // رفع محدودیت Autoplay با دکمه استارت
+      document.querySelector('#startBtn').onclick = function () {
+        document.querySelectorAll('video, audio').forEach((m) => { m.play(); m.pause(); });
+        this.style.display = 'none';
+      };
+    </script>
+  </body>
+</html>
